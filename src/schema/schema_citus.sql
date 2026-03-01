@@ -17,9 +17,6 @@ CREATE TABLE IF NOT EXISTS checkins (
     timezone_offset_mins INT         NOT NULL
 );
 
-ALTER TABLE checkins ADD CONSTRAINT fk_checkins_user FOREIGN KEY (user_id) REFERENCES users(user_id);
-ALTER TABLE checkins ADD CONSTRAINT fk_checkins_pois FOREIGN KEY (venue_id) REFERENCES pois(venue_id);
-
 CREATE TABLE IF NOT EXISTS friendships_before (
     user_id   BIGINT NOT NULL REFERENCES users(user_id),
     friend_id BIGINT NOT NULL REFERENCES users(user_id),
@@ -43,5 +40,7 @@ SELECT create_reference_table('users');
 SELECT create_reference_table('friendships_before');
 SELECT create_reference_table('friendships_after');
 
-SELECT create_distributed_table('pois');
+SELECT create_distributed_table('pois', 'venue_id');
 SELECT create_distributed_table('checkins', 'user_id');
+
+ALTER TABLE checkins ADD CONSTRAINT fk_checkins_user FOREIGN KEY (user_id) REFERENCES users(user_id);
