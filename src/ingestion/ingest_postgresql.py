@@ -33,7 +33,6 @@ def main():
     copy_tsv(cur, DATA_DIR / "my_POIs.tsv", "pois", "venue_id, latitude, longitude, category, country")
     conn.commit()
 
-    # checkins must follow users + pois (FK constraints)
     print("Loading checkins ...")
     copy_tsv(cur, DATA_DIR / "my_checkins_anonymized.tsv", "checkins", "user_id, venue_id, utc_time, timezone_offset_mins")
     conn.commit()
