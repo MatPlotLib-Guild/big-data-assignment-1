@@ -8,7 +8,6 @@ DATA_DIR = Path("data")
 
 
 def copy_tsv(cur, path: Path, table: str, columns: str) -> None:
-    """Stream a TSV (with matching headers) into a table via COPY."""
     with open(path) as f:
         cur.copy_expert(f"COPY {table} ({columns}) FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', HEADER TRUE)", f)
 
