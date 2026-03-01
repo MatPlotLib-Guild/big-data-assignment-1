@@ -1,7 +1,6 @@
 import psycopg2
 import polars as pl
 
-# Citus runs exactly the same SQL logic, just on a different port
 from src.queries.postgres_queries import _run_sql_file, _run_sql_file_with_result, run_q1, run_q3, run_q4
 
 
