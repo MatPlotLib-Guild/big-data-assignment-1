@@ -1,0 +1,190 @@
+name: foursquare
+
+services:
+  postgres:
+    image: postgres:16
+    profiles: [ postgres ]
+    environment:
+      POSTGRES_DB: foursquaredb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d foursquaredb" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  citus-coordinator:
+    image: citusdata/citus:12.1
+    profiles: [ citus ]
+    environment:
+      POSTGRES_DB: foursquaredb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+      PGPASSWORD: postgres
+    ports:
+      - "5433:5432"
+    shm_size: '20gb'
+    volumes:
+      - citus_coordinator_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d foursquaredb" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  citus-worker-1:
+    image: citusdata/citus:12.1
+    profiles: [ citus ]
+    environment:
+      POSTGRES_DB: foursquaredb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    shm_size: '20gb'
+    volumes:
+      - citus_worker1_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d foursquaredb" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  citus-worker-2:
+    image: citusdata/citus:12.1
+    profiles: [ citus ]
+    environment:
+      POSTGRES_DB: foursquaredb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    shm_size: '20gb'
+    volumes:
+      - citus_worker2_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d foursquaredb" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  citus-init:
+    image: postgres:16
+    profiles: [ citus ]
+    depends_on:
+      citus-coordinator: { condition: service_healthy }
+      citus-worker-1: { condition: service_healthy }
+      citus-worker-2: { condition: service_healthy }
+    environment:
+      PGPASSWORD: postgres
+    command: >
+      psql -h citus-coordinator -U postgres -d foursquaredb -c "SELECT citus_add_node('citus-worker-1', 5432);" -c "SELECT citus_add_node('citus-worker-2', 5432);"
+    restart: on-failure
+
+  scylla-1:
+    image: scylladb/scylla:6.2
+    profiles: [ scylla ]
+    command: --seeds=scylla-1 --smp 2 --memory 2G --overprovisioned 1 --api-address 0.0.0.0
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla_1_data:/var/lib/scylla
+    healthcheck:
+      test: [ "CMD-SHELL", "cqlsh --connect-timeout=5 -e 'SELECT release_version FROM system.local;' 2>/dev/null || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  scylla-2:
+    image: scylladb/scylla:6.2
+    profiles: [ scylla ]
+    command: --seeds=scylla-1 --smp 2 --memory 2G --overprovisioned 1
+    depends_on:
+      scylla-1: { condition: service_healthy }
+    volumes:
+      - scylla_2_data:/var/lib/scylla
+
+  scylla-3:
+    image: scylladb/scylla:6.2
+    profiles: [ scylla ]
+    command: --seeds=scylla-1 --smp 2 --memory 2G --overprovisioned 1
+    depends_on:
+      scylla-1: { condition: service_healthy }
+    volumes:
+      - scylla_3_data:/var/lib/scylla
+
+  mongo-1:
+    image: mongo:7
+    profiles: [ mongo ]
+    command: --replSet rs0 --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_1_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-2:
+    image: mongo:7
+    profiles: [ mongo ]
+    command: --replSet rs0 --bind_ip_all
+    volumes:
+      - mongo_2_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-3:
+    image: mongo:7
+    profiles: [ mongo ]
+    command: --replSet rs0 --bind_ip_all
+    volumes:
+      - mongo_3_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-init:
+    image: mongo:7
+    profiles: [ mongo ]
+    depends_on:
+      mongo-1: { condition: service_healthy }
+      mongo-2: { condition: service_healthy }
+      mongo-3: { condition: service_healthy }
+    command: >
+      mongosh --host mongo-1 --eval "rs.initiate({
+        _id: 'rs0',
+        members: [
+          {_id: 0, host: 'mongo-1:27017'},
+          {_id: 1, host: 'mongo-2:27017'},
+          {_id: 2, host: 'mongo-3:27017'}
+        ]
+      })"
+    restart: on-failure
+
+volumes:
+  postgres_data:
+  citus_coordinator_data:
+  citus_worker1_data:
+  citus_worker2_data:
+  scylla_1_data:
+  scylla_2_data:
+  scylla_3_data:
+  mongo_1_data:
+  mongo_2_data:
+  mongo_3_data:
